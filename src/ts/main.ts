@@ -810,12 +810,12 @@ w.VMName = null;
 loadList();
 
 // Welcome modal
-var noWelcomeModal = window.localStorage.getItem("no-welcome-modal");
+var noWelcomeModal = window.localStorage.getItem("no-uservm-welcome-modal");
 if (noWelcomeModal !== "1") {
 	var welcomeModalDismissBtn = document.getElementById("welcomeModalDismiss") as HTMLButtonElement;
 	var welcomeModal = new bootstrap.Modal(document.getElementById("welcomeModal") as HTMLDivElement);
 	welcomeModalDismissBtn.addEventListener("click", () => {
-		window.localStorage.setItem("no-welcome-modal", "1");
+		window.localStorage.setItem("no-uservm-welcome-modal", "1");
 	});
 	welcomeModalDismissBtn.disabled = true;
 	welcomeModal.show();
