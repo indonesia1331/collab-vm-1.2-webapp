@@ -10,6 +10,7 @@ import "simple-keyboard/build/css/index.css";
 import VoteStatus from "./protocol/VoteStatus.js";
 import * as bootstrap from "bootstrap";
 import MuteState from "./protocol/MuteState.js";
+import sanitizeHtml from 'sanitize-html';
 
 // Elements
 const w = window as any;
@@ -295,7 +296,8 @@ function multicollab(url : string) {
             var cardBody = document.createElement('div');
             cardBody.classList.add("card-body");
             var cardTitle = document.createElement('h5');
-            cardTitle.innerHTML = vm.displayName;
+            // no fun allowed
+            cardTitle.innerHTML = sanitizeHtml(vm.displayName);
             var usersOnline = document.createElement("span");
             usersOnline.innerHTML = `(<i class="fa-solid fa-users"></i> ${online})`;
             cardBody.appendChild(cardTitle);
@@ -404,7 +406,8 @@ function closeVM() {
 function loadList() {
     return new Promise<void>(async res => {
         var p = [];
-        for (var url of Config.ServerAddresses) {
+        var nodeList = await (await fetch("nodelist.json")).json();
+        for (var url of nodeList) {
             p.push(multicollab(url));
         }
         await Promise.all(p);
