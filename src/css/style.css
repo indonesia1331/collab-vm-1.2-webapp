@@ -285,7 +285,8 @@ color: white;
 }
 
 /* UserVM Blur */
-div[data-cvm-node=ipod1], div[data-cvm-node=ipod2], div[data-cvm-node=ipod3], div[data-cvm-node=ipod4] {
+/*
+div[data-cvm-node=xyzzy] {
   img { 
     filter:blur(40px)!important; 
   } 
@@ -294,3 +295,4 @@ div[data-cvm-node=ipod1], div[data-cvm-node=ipod2], div[data-cvm-node=ipod3], di
     font-weight:bolder; 
   }
 }
+*/
