@@ -234,7 +234,7 @@ export class I18n {
 		for (let domId of Object.keys(kDomIdtoStringMap)) {
 			let element = document.getElementById(domId);
 			if (element == null) {
-				alert('Uhh!! THIS SHOULD NOT BE SEEN!! IF YOU DO YELL LOUDLY');
+				alert(`Uhh!! THIS SHOULD NOT BE SEEN!! IF YOU DO YELL LOUDLY (${domId} not found)`);
 				return;
 			}
 
