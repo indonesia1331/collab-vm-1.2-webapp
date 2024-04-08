@@ -1,4 +1,4 @@
-import { createNanoEvents, Emitter, DefaultEvents } from 'nanoevents';
+import { createNanoEvents, Emitter, DefaultEvents, Unsubscribe } from 'nanoevents';
 import * as Guacutils from './Guacutils.js';
 import VM from './VM.js';
 import { User } from './User.js';
@@ -8,18 +8,10 @@ import Mouse from './mouse.js';
 import GetKeysym from '../keyboard.js';
 import VoteStatus from './VoteStatus.js';
 import MuteState from './MuteState.js';
-
-// TODO: `Object` has a toString(), but we should probably gate that off
-/// Interface for things that can be turned into strings
-interface ToStringable {
-	toString(): string;
-}
-
-/// A type for strings, or things that can (in a valid manner) be turned into strings
-type StringLike = string | ToStringable;
+import { StringLike } from '../StringLike.js';
 
 export interface CollabVMClientEvents {
-	open: () => void;
+	//open: () => void;
 	close: () => void;
 
 	message: (...args: string[]) => void;
@@ -41,10 +33,15 @@ export interface CollabVMClientEvents {
 
 	badpw: () => void;
 	login: (rank: Rank, perms: Permissions) => void;
+
+	// Auth stuff
+	auth: (server: string) => void;
+	accountlogin: (success: boolean) => void;
 }
 
 // types for private emitter
 interface CollabVMClientPrivateEvents {
+	open: () => void;
 	list: (listEntries: string[]) => void;
 	connect: (connectedToVM: boolean) => void;
 	ip: (username: string, ip: string) => void;
@@ -65,10 +62,13 @@ export default class CollabVMClient {
 	private perms: Permissions = new Permissions(0);
 	private voteStatus: VoteStatus | null = null;
 	private node: string | null = null;
+	private auth: boolean = false;
 	// events that are used internally and not exposed
 	private internalEmitter: Emitter<CollabVMClientPrivateEvents>;
 	// public events
 	private publicEmitter: Emitter<CollabVMClientEvents>;
+
+	private unsubscribeCallbacks: Array<Unsubscribe> = [];
 
 	constructor(url: string) {
 		// Save the URL
@@ -183,7 +183,7 @@ export default class CollabVMClient {
 
 	// Fires when the WebSocket connection is opened
 	private onOpen() {
-		this.publicEmitter.emit('open');
+		this.internalEmitter.emit('open');
 	}
 
 	// Fires on WebSocket message
@@ -346,6 +346,20 @@ export default class CollabVMClient {
 						break;
 				}
 			}
+			// auth stuff
+			case 'auth': {
+				this.publicEmitter.emit('auth', msgArr[1]);
+				this.auth = true;
+				break;
+			}
+			case 'login': {
+				if (msgArr[1] === "1") {
+					this.rank = Rank.Registered;
+					this.publicEmitter.emit('login', Rank.Registered, new Permissions(0));
+				}
+				this.publicEmitter.emit('accountlogin', msgArr[1] === "1");
+				break;
+			}
 			case 'admin': {
 				switch (msgArr[1]) {
 					case '0': {
@@ -379,6 +393,16 @@ export default class CollabVMClient {
 				}
 			}
 		}
+	}
+
+	async WaitForOpen() {
+		return new Promise<void>((res) => {
+			// TODO: should probably reject on close
+			let unsub = this.onInternal('open', () => {
+				unsub();
+				res();
+			});
+		});
 	}
 
 	// Sends a message to the server
@@ -431,6 +455,13 @@ export default class CollabVMClient {
 	// Close the connection
 	close() {
 		this.connectedToVM = false;
+
+		// call all unsubscribe callbacks explicitly
+		for (let cb of this.unsubscribeCallbacks) {
+			cb();
+		}
+		this.unsubscribeCallbacks = [];
+
 		if (this.socket.readyState === WebSocket.OPEN) this.socket.close();
 	}
 
@@ -580,11 +611,22 @@ export default class CollabVMClient {
 		this.send('admin', AdminOpcode.HideScreen, hidden ? '1' : '0');
 	}
 
-	private onInternal<E extends keyof CollabVMClientPrivateEvents>(event: E, callback: CollabVMClientPrivateEvents[E]) {
+	// Login to account
+	loginAccount(token: string) {
+		this.send('login', token);
+	}
+
+	usesAccountAuth() {
+		return this.auth;
+	}
+
+	private onInternal<E extends keyof CollabVMClientPrivateEvents>(event: E, callback: CollabVMClientPrivateEvents[E]): Unsubscribe {
 		return this.internalEmitter.on(event, callback);
 	}
 
-	on<E extends keyof CollabVMClientEvents>(event: E, callback: CollabVMClientEvents[E]) {
-		return this.publicEmitter.on(event, callback);
+	on<E extends keyof CollabVMClientEvents>(event: E, callback: CollabVMClientEvents[E]): Unsubscribe {
+		let unsub = this.publicEmitter.on(event, callback);
+		this.unsubscribeCallbacks.push(unsub);
+		return unsub;
 	}
 }

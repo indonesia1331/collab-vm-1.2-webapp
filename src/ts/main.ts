@@ -12,6 +12,10 @@ import * as bootstrap from "bootstrap";
 import MuteState from "./protocol/MuteState.js";
 import { Unsubscribe } from 'nanoevents';
 import sanitizeHtml from 'sanitize-html';
+import { I18nStringKey, TheI18n } from './i18n.js';
+import { Format } from './format.js';
+import AuthManager from './AuthManager.js';
+import dayjs from 'dayjs';
 
 // Elements
 const w = window as any;
@@ -40,7 +44,7 @@ const elements = {
 	voteNoBtn: document.getElementById('voteNoBtn') as HTMLButtonElement,
 	voteYesLabel: document.getElementById('voteYesLabel') as HTMLSpanElement,
 	voteNoLabel: document.getElementById('voteNoLabel') as HTMLSpanElement,
-	votetime: document.getElementById('votetime') as HTMLSpanElement,
+	voteTimeText: document.getElementById('voteTimeText') as HTMLSpanElement,
 	loginModal: document.getElementById('loginModal') as HTMLDivElement,
 	adminPassword: document.getElementById('adminPassword') as HTMLInputElement,
 	loginButton: document.getElementById('loginButton') as HTMLButtonElement,
@@ -64,8 +68,66 @@ const elements = {
 	indefTurnBtn: document.getElementById('indefTurnBtn') as HTMLButtonElement,
 	qemuMonitorInput: document.getElementById('qemuMonitorInput') as HTMLInputElement,
 	qemuMonitorSendBtn: document.getElementById('qemuMonitorSendBtn') as HTMLButtonElement,
-	qemuMonitorOutput: document.getElementById('qemuMonitorOutput') as HTMLTextAreaElement
+	qemuMonitorOutput: document.getElementById('qemuMonitorOutput') as HTMLTextAreaElement,
+	// Auth
+	accountDropdownUsername: document.getElementById("accountDropdownUsername") as HTMLSpanElement,
+	accountDropdownMenuLink: document.getElementById("accountDropdownMenuLink") as HTMLDivElement,
+	accountLoginButton: document.getElementById("accountLoginButton") as HTMLAnchorElement,
+	accountRegisterButton: document.getElementById("accountRegisterButton") as HTMLAnchorElement,
+	accountSettingsButton: document.getElementById("accountSettingsButton") as HTMLAnchorElement,
+	accountLogoutButton: document.getElementById("accountLogoutButton") as HTMLAnchorElement,
+	accountModal: document.getElementById("accountModal") as HTMLDivElement,
+	accountModalError: document.getElementById("accountModalError") as HTMLDivElement,
+	accountModalErrorText: document.getElementById("accountModalErrorText") as HTMLSpanElement,
+	accountModalErrorDismiss: document.getElementById("accountModalErrorDismiss") as HTMLButtonElement,
+	accountModalSuccess: document.getElementById("accountModalSuccess") as HTMLDivElement,
+	accountModalSuccessText: document.getElementById("accountModalSuccessText") as HTMLSpanElement,
+	accountModalSuccessDismiss: document.getElementById("accountModalSuccessDismiss") as HTMLButtonElement,
+	accountLoginSection: document.getElementById("accountLoginSection") as HTMLDivElement,
+	accountRegisterSection: document.getElementById("accountRegisterSection") as HTMLDivElement,
+	accountVerifyEmailSection: document.getElementById("accountVerifyEmailSection") as HTMLDivElement,
+	accountVerifyEmailText: document.getElementById("accountVerifyEmailText") as HTMLParagraphElement,
+	accountModalTitle: document.getElementById("accountModalTitle") as HTMLHeadingElement,
+	accountLoginForm: document.getElementById("accountLoginForm") as HTMLFormElement,
+	accountRegisterForm: document.getElementById("accountRegisterForm") as HTMLFormElement,
+	accountVerifyEmailForm: document.getElementById("accountVerifyEmailForm") as HTMLFormElement,
+	accountLoginCaptcha: document.getElementById("accountLoginCaptcha") as HTMLDivElement,
+	accountRegisterCaptcha: document.getElementById("accountRegisterCaptcha") as HTMLDivElement,
+
+	accountLoginUsername: document.getElementById("accountLoginUsername") as HTMLInputElement,
+	accountLoginPassword: document.getElementById("accountLoginPassword") as HTMLInputElement,
+	accountRegisterEmail: document.getElementById("accountRegisterEmail") as HTMLInputElement,
+	accountRegisterUsername: document.getElementById("accountRegisterUsername") as HTMLInputElement,
+	accountRegisterPassword: document.getElementById("accountRegisterPassword") as HTMLInputElement,
+	accountRegisterConfirmPassword: document.getElementById("accountRegisterConfirmPassword") as HTMLInputElement,
+	accountRegisterDateOfBirth: document.getElementById("accountRegisterDateOfBirth") as HTMLInputElement,
+	accountVerifyEmailCode: document.getElementById("accountVerifyEmailCode") as HTMLInputElement,
+	accountVerifyEmailPassword: document.getElementById("accountVerifyEmailPassword") as HTMLInputElement,
+
+	accountSettingsSection: document.getElementById("accountSettingsSection") as HTMLDivElement,
+	accountSettingsForm: document.getElementById("accountSettingsForm") as HTMLFormElement,
+	accountSettingsEmail: document.getElementById("accountSettingsEmail") as HTMLInputElement,
+	accountSettingsUsername: document.getElementById("accountSettingsUsername") as HTMLInputElement,
+	accountSettingsNewPassword: document.getElementById("accountSettingsNewPassword") as HTMLInputElement,
+	accountSettingsConfirmNewPassword: document.getElementById("accountSettingsConfirmNewPassword") as HTMLInputElement,
+	accountSettingsCurrentPassword: document.getElementById("accountSettingsCurrentPassword") as HTMLInputElement,
+
+	accountResetPasswordSection: document.getElementById("accountResetPasswordSection") as HTMLDivElement,
+	accountResetPasswordForm: document.getElementById("accountResetPasswordForm") as HTMLFormElement,
+	accountResetPasswordEmail: document.getElementById("accountResetPasswordEmail") as HTMLInputElement,
+	accountResetPasswordUsername: document.getElementById("accountResetPasswordUsername") as HTMLInputElement,
+	accountResetPasswordCaptcha: document.getElementById("accountResetPasswordCaptcha") as HTMLDivElement,
+
+	accountResetPasswordVerifySection: document.getElementById("accountResetPasswordVerifySection") as HTMLDivElement,
+	accountVerifyPasswordResetText: document.getElementById("accountVerifyPasswordResetText") as HTMLParagraphElement,
+	accountResetPasswordVerifyForm: document.getElementById("accountResetPasswordVerifyForm") as HTMLFormElement,
+	accountResetPasswordCode: document.getElementById("accountResetPasswordCode") as HTMLInputElement,
+	accountResetPasswordNewPassword: document.getElementById("accountResetPasswordNewPassword") as HTMLInputElement,
+	accountResetPasswordConfirmNewPassword: document.getElementById("accountResetPasswordConfirmNewPassword") as HTMLInputElement,
+	accountForgotPasswordButton: document.getElementById("accountForgotPasswordButton") as HTMLButtonElement,
 };
+
+let auth : AuthManager|null = null;
 
 /* Start OSK */
 let commonKeyboardOptions = {
@@ -264,16 +326,21 @@ let VM: CollabVMClient | null = null;
 async function multicollab(url: string) {
 	// Create the client
 	let client = new CollabVMClient(url);
-	// Wait for the client to open
-	await new Promise<void>((res) => client.on('open', () => res()));
+
+	await client.WaitForOpen();
+
 	// Get the list of VMs
 	let list = await client.list();
+
 	// Get the number of online users
 	let online = client.getUsers().length;
+
 	// Close the client
 	client.close();
+
 	// Add to the list
 	vms.push(...list);
+
 	// Add to the DOM
 	for (let vm of list) {
 		let div = document.createElement('div');
@@ -313,54 +380,57 @@ async function openVM(vm: VM): Promise<void> {
 	location.hash = vm.id;
 	// Create the client
 	VM = new CollabVMClient(vm.url);
+
 	// Register event listeners
 
-	// An array of nanoevent unsubscribe callbacks. These are called when the VM is closed to cleanup nanoevent state.
-	let unsubscribeCallbacks: Unsubscribe[] = [];
+	VM!.on('chat', (username, message) => chatMessage(username, message));
+	VM!.on('adduser', (user) => addUser(user));
+	VM!.on('remuser', (user) => remUser(user));
+	VM!.on('rename', (oldname, newname, selfrename) => userRenamed(oldname, newname, selfrename));
 
-	unsubscribeCallbacks.push(VM!.on('chat', (username, message) => chatMessage(username, message)));
-	unsubscribeCallbacks.push(VM!.on('adduser', (user) => addUser(user)));
-	unsubscribeCallbacks.push(VM!.on('remuser', (user) => remUser(user)));
-	unsubscribeCallbacks.push(VM!.on('rename', (oldname, newname, selfrename) => userRenamed(oldname, newname, selfrename)));
-	unsubscribeCallbacks.push(
-		VM!.on('renamestatus', (status) => {
-			switch (status) {
-				case 'taken':
-					alert('That username is already taken');
-					break;
-				case 'invalid':
-					alert('Usernames can contain only numbers, letters, spaces, dashes, underscores, and dots, and it must be between 3 and 20 characters.');
-					break;
-				case 'blacklisted':
-					alert('That username has been blacklisted.');
-					break;
-			}
-		})
-	);
-	unsubscribeCallbacks.push(VM!.on('turn', (status) => turnUpdate(status)));
-	unsubscribeCallbacks.push(VM!.on('vote', (status: VoteStatus) => voteUpdate(status)));
-	unsubscribeCallbacks.push(VM!.on('voteend', () => voteEnd()));
-	unsubscribeCallbacks.push(VM!.on('votecd', (cd) => window.alert(`Please wait ${cd} seconds before starting another vote.`)));
-	unsubscribeCallbacks.push(VM!.on('login', (rank: Rank, perms: Permissions) => onLogin(rank, perms)));
-	unsubscribeCallbacks.push(
-		VM!.on('close', () => {
-			if (!expectedClose) alert('You have been disconnected from the server');
+	VM!.on('renamestatus', (status) => {
+		// TODO: i18n these
+		switch (status) {
+			case 'taken':
+				alert(TheI18n.GetString(I18nStringKey.kError_UsernameTaken));
+				break;
+			case 'invalid':
+				alert(TheI18n.GetString(I18nStringKey.kError_UsernameInvalid));
+				break;
+			case 'blacklisted':
+				alert(TheI18n.GetString(I18nStringKey.kError_UsernameBlacklisted));
+				break;
+		}
+	});
 
-			// Call all the unsubscribe callbacks.
-			for (let l of unsubscribeCallbacks) l();
-			unsubscribeCallbacks = [];
-			closeVM();
-		})
-	);
+	VM!.on('turn', (status) => turnUpdate(status));
+	VM!.on('vote', (status: VoteStatus) => voteUpdate(status));
+	VM!.on('voteend', () => voteEnd());
+	VM!.on('votecd', (voteCooldown) => window.alert(TheI18n.GetString(I18nStringKey.kVM_VoteCooldownTimer, voteCooldown)));
+	VM!.on('login', (rank: Rank, perms: Permissions) => onLogin(rank, perms));
+
+	VM!.on('close', () => {
+		if (!expectedClose) alert(TheI18n.GetString(I18nStringKey.kError_UnexpectedDisconnection));
+		closeVM();
+	});
+
+	// auth
+	VM!.on('auth', async server => {
+		elements.changeUsernameBtn.style.display = "none";
+		if (Config.Auth.Enabled && Config.Auth.APIEndpoint === server && auth!.account) {
+			VM!.loginAccount(auth!.account.sessionToken);
+		} else if (!Config.Auth.Enabled || Config.Auth.APIEndpoint !== server) {
+			auth = new AuthManager(server);
+			await renderAuth();
+		}
+	});
 
 	// Wait for the client to open
-	await new Promise<void>((res) => {
-		unsubscribeCallbacks.push(VM!.on('open', () => res()));
-	});
+	await VM!.WaitForOpen();
 
 	// Connect to node
 	chatMessage('', `<b>${vm.id}</b><hr>`);
-	let username = localStorage.getItem('username');
+	let username = Config.Auth.Enabled ? (auth!.account?.username ?? null) : localStorage.getItem('username');
 	let connected = await VM.connect(vm.id, username);
 	elements.adminInputVMID.value = vm.id;
 	w.VMName = vm.id;
@@ -370,7 +440,7 @@ async function openVM(vm: VM): Promise<void> {
 		throw new Error('Failed to connect to node');
 	}
 	// Set the title
-	document.title = vm.id + ' - CollabVM';
+	document.title = Format('{0} - {1}', vm.id, TheI18n.GetString(I18nStringKey.kGeneric_CollabVM));
 	// Append canvas
 	elements.vmDisplay.appendChild(VM!.canvas);
 	// Switch to the VM view
@@ -385,7 +455,7 @@ function closeVM() {
 	// Close the VM
 	VM.close();
 	VM = null;
-	document.title = 'CollabVM';
+	document.title = TheI18n.GetString(I18nStringKey.kGeneric_CollabVM);
 	turn = -1;
 	// Remove the canvas
 	elements.vmDisplay.innerHTML = '';
@@ -413,8 +483,18 @@ function closeVM() {
 	elements.voteYesLabel.innerText = '0';
 	elements.voteNoLabel.innerText = '0';
 	elements.xssCheckbox.checked = false;
-	elements.username.classList.remove('username-admin', 'username-moderator');
-	elements.username.classList.add('text-light');
+	elements.username.classList.remove('username-admin', 'username-moderator', 'username-registered');
+	elements.username.classList.add('username-unregistered');
+	// Reset rename button
+	elements.changeUsernameBtn.style.display = "inline-block";
+	// Reset auth if it was changed by the VM
+	if (Config.Auth.Enabled && auth?.apiEndpoint !== Config.Auth.APIEndpoint) {
+		auth = new AuthManager(Config.Auth.APIEndpoint);
+		renderAuth();
+	} else if (auth && !Config.Auth.Enabled) {
+		auth = null;
+		elements.accountDropdownMenuLink.style.display = "none";
+	}
 }
 
 function loadList() {
@@ -472,6 +552,10 @@ function chatMessage(username: string, message: string) {
 				userclass = 'chat-username-unregistered';
 				msgclass = 'chat-unregistered';
 				break;
+			case Rank.Registered:
+				userclass = 'chat-username-registered';
+				msgclass = 'chat-registered';
+				break;
 			case Rank.Admin:
 				userclass = 'chat-username-admin';
 				msgclass = 'chat-admin';
@@ -510,6 +594,9 @@ function addUser(user: User) {
 		case Rank.Moderator:
 			tr.classList.add('user-moderator');
 			break;
+		case Rank.Registered:
+			tr.classList.add('user-registered');
+			break;
 		case Rank.Unregistered:
 			tr.classList.add('user-unregistered');
 			break;
@@ -517,7 +604,7 @@ function addUser(user: User) {
 	if (user.username === w.username) tr.classList.add('user-current');
 	tr.appendChild(td);
 	let u = { user: user, element: tr };
-	if (rank !== Rank.Unregistered) userModOptions(u);
+	if (rank === Rank.Admin || rank === Rank.Moderator) userModOptions(u);
 	elements.userlist.appendChild(tr);
 	if (olduser !== undefined) olduser.element = tr;
 	else users.push(u);
@@ -553,7 +640,7 @@ function turnUpdate(status: TurnStatus) {
 		user.element.classList.remove('user-turn', 'user-waiting');
 		user.element.setAttribute('data-cvm-turn', '-1');
 	}
-	elements.turnBtnText.innerHTML = 'Take Turn';
+	elements.turnBtnText.innerHTML = TheI18n.GetString(I18nStringKey.kVMButtons_TakeTurn);
 	enableOSK(false);
 
 	if (status.user !== null) {
@@ -569,18 +656,19 @@ function turnUpdate(status: TurnStatus) {
 	if (status.user?.username === w.username) {
 		turn = 0;
 		turnTimer = status.turnTime! / 1000;
-		elements.turnBtnText.innerHTML = 'End Turn';
+		elements.turnBtnText.innerHTML = TheI18n.GetString(I18nStringKey.kVMButtons_EndTurn);
 		VM!.canvas.classList.add('focused');
 		enableOSK(true);
 	}
 	if (status.queue.some((u) => u.username === w.username)) {
 		turn = status.queue.findIndex((u) => u.username === w.username) + 1;
 		turnTimer = status.queueTime! / 1000;
-		elements.turnBtnText.innerHTML = 'End Turn';
+		elements.turnBtnText.innerHTML = TheI18n.GetString(I18nStringKey.kVMButtons_EndTurn);
 		VM!.canvas.classList.add('waiting');
 	}
 	if (turn === -1) elements.turnstatus.innerText = '';
 	else {
+		//@ts-ignore
 		turnInterval = setInterval(() => turnIntervalCb(), 1000);
 		setTurnStatus();
 	}
@@ -593,13 +681,14 @@ function voteUpdate(status: VoteStatus) {
 	elements.voteYesLabel.innerText = status.yesVotes.toString();
 	elements.voteNoLabel.innerText = status.noVotes.toString();
 	voteTimer = Math.floor(status.timeToEnd / 1000);
+	//@ts-ignore
 	voteInterval = setInterval(() => updateVoteEndTime(), 1000);
 	updateVoteEndTime();
 }
 
 function updateVoteEndTime() {
 	voteTimer--;
-	elements.votetime.innerText = voteTimer.toString();
+	elements.voteTimeText.innerText = TheI18n.GetString(I18nStringKey.kVM_VoteForResetTimer, voteTimer);
 	if (voteTimer === 0) clearInterval(voteInterval);
 }
 
@@ -614,8 +703,8 @@ function turnIntervalCb() {
 }
 
 function setTurnStatus() {
-	if (turn === 0) elements.turnstatus.innerText = `Turn expires in ${turnTimer} seconds`;
-	else elements.turnstatus.innerText = `Waiting for turn in ${turnTimer} seconds`;
+	if (turn === 0) elements.turnstatus.innerText = TheI18n.GetString(I18nStringKey.kVM_TurnTimeTimer, turnTimer);
+	else elements.turnstatus.innerText = TheI18n.GetString(I18nStringKey.kVM_WaitingTurnTimer, turnTimer);
 }
 
 function sendChat() {
@@ -634,7 +723,7 @@ elements.chatinput.addEventListener('keypress', (e) => {
 	if (e.key === 'Enter') sendChat();
 });
 elements.changeUsernameBtn.addEventListener('click', () => {
-	let newname = prompt('Enter new username, or leave blank to be assigned a guest username', w.username);
+	let newname = prompt(TheI18n.GetString(I18nStringKey.kVMPrompts_EnterNewUsernamePrompt), w.username);
 	if (newname === w.username) return;
 	VM?.rename(newname);
 });
@@ -670,6 +759,7 @@ let usernameClick = false;
 const loginModal = new bootstrap.Modal(elements.loginModal);
 elements.loginModal.addEventListener('shown.bs.modal', () => elements.adminPassword.focus());
 elements.username.addEventListener('click', () => {
+	if (auth) return;
 	if (!usernameClick) {
 		usernameClick = true;
 		setInterval(() => (usernameClick = false), 1000);
@@ -699,9 +789,10 @@ function doLogin() {
 function onLogin(_rank: Rank, _perms: Permissions) {
 	rank = _rank;
 	perms = _perms;
-	elements.username.classList.remove('text-dark', 'text-light');
+	elements.username.classList.remove('username-unregistered', 'username-registered');
 	if (rank === Rank.Admin) elements.username.classList.add('username-admin');
 	if (rank === Rank.Moderator) elements.username.classList.add('username-moderator');
+	if (rank === Rank.Registered) elements.username.classList.add('username-registered');
 	elements.staffbtns.style.display = 'block';
 	if (_perms.restore) elements.restoreBtn.style.display = 'inline-block';
 	if (_perms.reboot) elements.rebootBtn.style.display = 'inline-block';
@@ -716,7 +807,8 @@ function onLogin(_rank: Rank, _perms: Permissions) {
 	}
 	if (_perms.xss) elements.xssCheckboxContainer.style.display = 'inline-block';
 	if (_perms.forcevote) elements.forceVotePanel.style.display = 'block';
-	for (const user of users) userModOptions(user);
+	if (rank !== Rank.Registered)
+		for (const user of users) userModOptions(user);
 }
 
 function userModOptions(user: { user: User; element: HTMLTableRowElement }) {
@@ -729,7 +821,7 @@ function userModOptions(user: { user: User; element: HTMLTableRowElement }) {
 	td.setAttribute('aria-expanded', 'false');
 	let ul = document.createElement('ul');
 	ul.classList.add('dropdown-menu', 'dropdown-menu-dark', 'table-dark', 'text-light');
-	if (perms.bypassturn) addUserDropdownItem(ul, 'End Turn', () => VM!.endTurn(user.user.username));
+	if (perms.bypassturn) addUserDropdownItem(ul, TheI18n.GetString(I18nStringKey.kVMButtons_EndTurn), () => VM!.endTurn(user.user.username));
 	if (perms.ban) addUserDropdownItem(ul, 'Ban', () => VM!.ban(user.user.username));
 	if (perms.kick) addUserDropdownItem(ul, 'Kick', () => VM!.kick(user.user.username));
 	if (perms.rename)
@@ -788,6 +880,299 @@ elements.qemuMonitorSendBtn.addEventListener('click', () => sendQEMUCommand());
 elements.qemuMonitorInput.addEventListener('keypress', (e) => e.key === 'Enter' && sendQEMUCommand());
 
 elements.osk.addEventListener('click', () => elements.oskContainer.classList.toggle('d-none'));
+// Auth stuff
+async function renderAuth() {
+	if (auth === null) throw new Error("Cannot renderAuth when auth is null.");
+	await auth.getAPIInformation();
+	elements.accountDropdownUsername.innerText = TheI18n.GetString(I18nStringKey.kNotLoggedIn);
+	elements.accountDropdownMenuLink.style.display = "block";
+	if (!auth!.info!.registrationOpen)
+		elements.accountRegisterButton.style.display = "none";
+	else
+		elements.accountRegisterButton.style.display = "block";
+	elements.accountLoginButton.style.display = "block";
+	elements.accountSettingsButton.style.display = "none";
+	elements.accountLogoutButton.style.display = "none";
+	elements.accountRegisterCaptcha.innerHTML = "";
+	elements.accountLoginCaptcha.innerHTML = "";
+	elements.accountResetPasswordCaptcha.innerHTML = "";
+	if (auth!.info!.hcaptcha.required) {
+		var hconfig = {sitekey: auth!.info!.hcaptcha.siteKey!};
+		hcaptcha.render(elements.accountRegisterCaptcha, hconfig);
+		hcaptcha.render(elements.accountLoginCaptcha, hconfig);
+		hcaptcha.render(elements.accountResetPasswordCaptcha, hconfig);
+	}
+	var token = localStorage.getItem("collabvm_session_" + new URL(auth!.apiEndpoint).host);
+	if (token) {
+		var result = await auth!.loadSession(token);
+		if (result.success) {
+			loadAccount();
+		} else {
+			localStorage.removeItem("collabvm_session_" + new URL(auth!.apiEndpoint).host);
+		}
+	}
+}
+function loadAccount() {
+	if (auth === null || auth.account === null) throw new Error("Cannot loadAccount when auth or auth.account is null.");
+	elements.accountDropdownUsername.innerText = auth!.account!.username;
+	elements.accountLoginButton.style.display = "none";
+	elements.accountRegisterButton.style.display = "none";
+	elements.accountSettingsButton.style.display = "block";
+	elements.accountLogoutButton.style.display = "block";
+	if (VM) VM.loginAccount(auth.account.sessionToken);
+}
+const accountModal = new bootstrap.Modal(elements.accountModal);
+elements.accountModalErrorDismiss.addEventListener('click', () => elements.accountModalError.style.display = "none");
+elements.accountModalSuccessDismiss.addEventListener('click', () => elements.accountModalSuccess.style.display = "none");
+elements.accountLoginButton.addEventListener("click", () => {
+	elements.accountModalTitle.innerText = TheI18n.GetString(I18nStringKey.kAccountModal_Login);
+	elements.accountRegisterSection.style.display = "none";
+	elements.accountVerifyEmailSection.style.display = "none";
+	elements.accountLoginSection.style.display = "block";
+	elements.accountSettingsSection.style.display = "none";
+	elements.accountResetPasswordSection.style.display = "none";
+	elements.accountResetPasswordVerifySection.style.display = "none";
+	accountModal.show();
+});
+elements.accountRegisterButton.addEventListener("click", () => {
+	elements.accountModalTitle.innerText = TheI18n.GetString(I18nStringKey.kAccountModal_Register);
+	elements.accountRegisterSection.style.display = "block";
+	elements.accountVerifyEmailSection.style.display = "none";
+	elements.accountLoginSection.style.display = "none";
+	elements.accountSettingsSection.style.display = "none";
+	elements.accountResetPasswordSection.style.display = "none";
+	elements.accountResetPasswordVerifySection.style.display = "none";
+	accountModal.show();
+});
+elements.accountSettingsButton.addEventListener("click", () => {
+	elements.accountModalTitle.innerText = TheI18n.GetString(I18nStringKey.kAccountModal_AccountSettings);
+	elements.accountRegisterSection.style.display = "none";
+	elements.accountVerifyEmailSection.style.display = "none";
+	elements.accountLoginSection.style.display = "none";
+	elements.accountSettingsSection.style.display = "block";
+	elements.accountResetPasswordSection.style.display = "none";
+	elements.accountResetPasswordVerifySection.style.display = "none";
+	// Fill fields
+	elements.accountSettingsUsername.value = auth!.account!.username;
+	elements.accountSettingsEmail.value = auth!.account!.email;
+	accountModal.show();
+});
+elements.accountLogoutButton.addEventListener('click', async () => {
+	if (!auth?.account) return;
+	await auth.logout();
+	localStorage.removeItem("collabvm_session_" + new URL(auth!.apiEndpoint).host);
+	if (VM) closeVM();
+	renderAuth();
+});
+elements.accountForgotPasswordButton.addEventListener('click', () => {
+	elements.accountModalTitle.innerText = TheI18n.GetString(I18nStringKey.kAccountModal_ResetPassword);
+	elements.accountLoginSection.style.display = "none";
+	elements.accountResetPasswordSection.style.display = "block";
+});
+// i dont know if theres a better place to put this
+let accountBeingVerified;
+elements.accountLoginForm.addEventListener('submit', async (e) => {
+	e.preventDefault();
+	var hcaptchaToken = undefined;
+	var hcaptchaID = undefined;
+	if (auth!.info!.hcaptcha.required) {
+		hcaptchaID = elements.accountLoginCaptcha.children[0].getAttribute("data-hcaptcha-widget-id")!
+		var response = hcaptcha.getResponse(hcaptchaID);
+		if (response === "") {
+			elements.accountModalErrorText.innerHTML = TheI18n.GetString(I18nStringKey.kMissingCaptcha);
+			elements.accountModalError.style.display = "block";
+			return false;
+		}
+		hcaptchaToken = response;
+	}
+	var username = elements.accountLoginUsername.value;
+	var password = elements.accountLoginPassword.value;
+	var result = await auth!.login(username, password, hcaptchaToken);
+	if (auth!.info!.hcaptcha.required) hcaptcha.reset(hcaptchaID);
+	if (result.success) {
+		elements.accountLoginUsername.value = "";
+		elements.accountLoginPassword.value = "";
+		if (result.verificationRequired) {
+			accountBeingVerified = result.username;
+			elements.accountVerifyEmailText.innerText = TheI18n.GetString(I18nStringKey.kAccountModal_VerifyText, result.email!);
+			elements.accountLoginSection.style.display = "none";
+			elements.accountVerifyEmailSection.style.display = "block";
+			return false;
+		}
+		localStorage.setItem("collabvm_session_" + new URL(auth!.apiEndpoint).host, result.token!);
+		loadAccount();
+		accountModal.hide();
+	} else {
+		elements.accountModalErrorText.innerHTML = result.error!;
+		elements.accountModalError.style.display = "block";
+	}
+	return false;
+});
+elements.accountRegisterForm.addEventListener('submit', async (e) => {
+	e.preventDefault();
+	var hcaptchaToken = undefined;
+	var hcaptchaID = undefined;
+	if (auth!.info!.hcaptcha.required) {
+		hcaptchaID = elements.accountRegisterCaptcha.children[0].getAttribute("data-hcaptcha-widget-id")!
+		var response = hcaptcha.getResponse(hcaptchaID);
+		if (response === "") {
+			elements.accountModalErrorText.innerHTML = TheI18n.GetString(I18nStringKey.kMissingCaptcha);
+			elements.accountModalError.style.display = "block";
+			return false;
+		}
+		hcaptchaToken = response;
+	}
+	var username = elements.accountRegisterUsername.value;
+	var password = elements.accountRegisterPassword.value;
+	var email = elements.accountRegisterEmail.value;
+	var dob = dayjs(elements.accountRegisterDateOfBirth.valueAsDate);
+	if (password !== elements.accountRegisterConfirmPassword.value) {
+		elements.accountModalErrorText.innerHTML = TheI18n.GetString(I18nStringKey.kPasswordsMustMatch);
+		elements.accountModalError.style.display = "block";
+		return false;
+	}
+	var result = await auth!.register(username, password, email, dob, hcaptchaToken);
+	if (auth!.info!.hcaptcha.required) hcaptcha.reset(hcaptchaID);
+	if (result.success) {
+		elements.accountRegisterUsername.value = "";
+		elements.accountRegisterEmail.value = "";
+		elements.accountRegisterPassword.value = "";
+		elements.accountRegisterConfirmPassword.value = "";
+		elements.accountRegisterDateOfBirth.value = "";
+		if (result.verificationRequired) {
+			accountBeingVerified = result.username;
+			elements.accountVerifyEmailText.innerText = TheI18n.GetString(I18nStringKey.kAccountModal_VerifyText, result.email!);
+			elements.accountRegisterSection.style.display = "none";
+			elements.accountVerifyEmailSection.style.display = "block";
+			return false;
+		}
+		localStorage.setItem("collabvm_session_" + new URL(auth!.apiEndpoint).host, result.sessionToken!);
+		await auth!.loadSession(result.sessionToken!);
+		loadAccount();
+		accountModal.hide();
+	} else {
+		elements.accountModalErrorText.innerHTML = result.error!;
+		elements.accountModalError.style.display = "block";
+	}
+	return false;
+});
+elements.accountVerifyEmailForm.addEventListener('submit', async e => {
+	e.preventDefault();
+	var username = accountBeingVerified!;
+	var code = elements.accountVerifyEmailCode.value;
+	var password = elements.accountVerifyEmailPassword.value;
+	var result = await auth!.verifyEmail(username, password, code);
+	if (result.success) {
+		elements.accountVerifyEmailCode.value = "";
+		elements.accountVerifyEmailPassword.value = "";
+		localStorage.setItem("collabvm_session_" + new URL(auth!.apiEndpoint).host, result.sessionToken!);
+		await auth!.loadSession(result.sessionToken!);
+		loadAccount();
+		accountModal.hide();
+	} else {
+		elements.accountModalErrorText.innerHTML = result.error!;
+		elements.accountModalError.style.display = "block";
+	}
+	return false;
+});
+elements.accountSettingsForm.addEventListener('submit', async e => {
+	e.preventDefault();
+	var oldUsername = auth!.account!.username;
+	var oldEmail = auth!.account!.email;
+	var username = elements.accountSettingsUsername.value === auth!.account!.username ? undefined : elements.accountSettingsUsername.value;
+	var email = elements.accountSettingsEmail.value === auth!.account!.email ? undefined : elements.accountSettingsEmail.value;
+	var password = elements.accountSettingsNewPassword.value === "" ? undefined : elements.accountSettingsNewPassword.value;
+	var currentPassword = elements.accountSettingsCurrentPassword.value;
+	if (password && password !== elements.accountSettingsConfirmNewPassword.value) {
+		elements.accountModalErrorText.innerHTML = TheI18n.GetString(I18nStringKey.kPasswordsMustMatch);
+		elements.accountModalError.style.display = "block";
+		return false;
+	}
+	var result = await auth!.updateAccount(currentPassword, email, username, password);
+	if (result.success) {
+		elements.accountSettingsNewPassword.value = "";
+		elements.accountSettingsConfirmNewPassword.value = "";
+		elements.accountSettingsCurrentPassword.value = "";
+		if (result.verificationRequired) {
+			renderAuth();
+			accountBeingVerified = username ?? oldUsername;
+			elements.accountVerifyEmailText.innerText = TheI18n.GetString(I18nStringKey.kAccountModal_VerifyText, email ?? oldEmail);
+			elements.accountSettingsSection.style.display = "none";
+			elements.accountVerifyEmailSection.style.display = "block";
+			return false;
+		} else if (result.sessionExpired) {
+			accountModal.hide();
+			localStorage.removeItem("collabvm_session_" + new URL(auth!.apiEndpoint).host);
+			if (VM) closeVM();
+			renderAuth();
+		} else {
+			accountModal.hide();
+		}
+	} else {
+		elements.accountModalErrorText.innerHTML = result.error!;
+		elements.accountModalError.style.display = "block";
+	}
+	return false;
+});
+let resetPasswordUsername;
+let resetPasswordEmail;
+elements.accountResetPasswordForm.addEventListener('submit', async e => {
+	e.preventDefault();
+	var hcaptchaToken = undefined;
+	var hcaptchaID = undefined;
+	if (auth!.info!.hcaptcha.required) {
+		hcaptchaID = elements.accountResetPasswordCaptcha.children[0].getAttribute("data-hcaptcha-widget-id")!
+		var response = hcaptcha.getResponse(hcaptchaID);
+		if (response === "") {
+			elements.accountModalErrorText.innerHTML = TheI18n.GetString(I18nStringKey.kMissingCaptcha);
+			elements.accountModalError.style.display = "block";
+			return false;
+		}
+		hcaptchaToken = response;
+	}
+	var username = elements.accountResetPasswordUsername.value;
+	var email = elements.accountResetPasswordEmail.value;
+	var result = await auth!.sendPasswordResetEmail(username, email, hcaptchaToken);
+	if (auth!.info!.hcaptcha.required) hcaptcha.reset(hcaptchaID);
+	if (result.success) {
+		resetPasswordUsername = username;
+		resetPasswordEmail = email;
+		elements.accountResetPasswordUsername.value = "";
+		elements.accountResetPasswordEmail.value = "";
+		elements.accountVerifyPasswordResetText.innerText = TheI18n.GetString(I18nStringKey.kAccountModal_VerifyPasswordResetText, email);
+		elements.accountResetPasswordSection.style.display = "none";
+		elements.accountResetPasswordVerifySection.style.display = "block";
+	} else {
+		elements.accountModalErrorText.innerHTML = result.error!;
+		elements.accountModalError.style.display = "block";
+	}
+	return false;
+});
+elements.accountResetPasswordVerifyForm.addEventListener('submit', async e => {
+	e.preventDefault();
+	var code = elements.accountResetPasswordCode.value;
+	var password = elements.accountResetPasswordNewPassword.value;
+	if (password !== elements.accountResetPasswordConfirmNewPassword.value) {
+		elements.accountModalErrorText.innerHTML = TheI18n.GetString(I18nStringKey.kPasswordsMustMatch);
+		elements.accountModalError.style.display = "block";
+		return false;
+	}
+	var result = await auth!.resetPassword(resetPasswordUsername!, resetPasswordEmail!, code, password);
+	if (result.success) {
+		elements.accountResetPasswordCode.value = "";
+		elements.accountResetPasswordNewPassword.value = "";
+		elements.accountResetPasswordConfirmNewPassword.value = "";
+		elements.accountModalSuccessText.innerHTML = TheI18n.GetString(I18nStringKey.kAccountModal_PasswordResetSuccess);
+		elements.accountModalSuccess.style.display = "block";
+		elements.accountResetPasswordVerifySection.style.display = "none";
+		elements.accountLoginSection.style.display = "block";
+		
+	} else {
+		elements.accountModalErrorText.innerHTML = result.error!;
+		elements.accountModalError.style.display = "block";
+	}
+	return false;
+});
 
 // Public API
 w.collabvm = {
@@ -834,8 +1219,9 @@ w.cvmEvents = {
 };
 w.VMName = null;
 
-// Load all VMs
-loadList();
+document.addEventListener('DOMContentLoaded', async () => {
+	// Initalize the i18n system
+	await TheI18n.Init();
 
 // Welcome modal
 var noWelcomeModal = window.localStorage.getItem("no-uservm-welcome-modal");
@@ -851,3 +1237,14 @@ if (noWelcomeModal !== "1") {
 		welcomeModalDismissBtn.disabled = false;
 	}, 5000);
 }
+	// Initialize authentication if enabled
+	if (Config.Auth.Enabled) {
+		auth = new AuthManager(Config.Auth.APIEndpoint);
+		renderAuth();
+	}
+
+	document.title = TheI18n.GetString(I18nStringKey.kGeneric_CollabVM);
+
+	// Load all VMs
+	await loadList();
+});
