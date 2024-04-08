@@ -11,7 +11,8 @@ import VoteStatus from "./protocol/VoteStatus.js";
 import * as bootstrap from "bootstrap";
 import MuteState from "./protocol/MuteState.js";
 import { Unsubscribe } from 'nanoevents';
-import sanitizeHtml from 'sanitize-html';
+import * as DOMPurify from 'dompurify';
+const DOMPurifyConfig = { USE_PROFILES: { html: true } };
 import { I18nStringKey, TheI18n } from './i18n.js';
 import { Format } from './format.js';
 import AuthManager from './AuthManager.js';
@@ -359,7 +360,7 @@ async function multicollab(url: string) {
 		let cardBody = document.createElement('div');
 		cardBody.classList.add('card-body');
 		let cardTitle = document.createElement('h5');
-		cardTitle.innerHTML = vm.displayName;
+		cardTitle.innerHTML = DOMPurify.sanitize(vm.displayName, DOMPurifyConfig);
 		let usersOnline = document.createElement('span');
 		usersOnline.innerHTML = `(<i class="fa-solid fa-users"></i> ${online})`;
 		cardBody.appendChild(cardTitle);
@@ -539,7 +540,7 @@ function chatMessage(username: string, message: string) {
 	let tr = document.createElement('tr');
 	let td = document.createElement('td');
 	// System message
-	if (username === '') td.innerHTML = message;
+	if (username === '') td.innerHTML = DOMPurify.sanitize(message, DOMPurifyConfig);
 	else {
 		let user = VM!.getUsers().find((u) => u.username === username);
 		let rank;
@@ -566,7 +567,7 @@ function chatMessage(username: string, message: string) {
 				break;
 		}
 		tr.classList.add(msgclass);
-		td.innerHTML = `<b class="${userclass}">${username}▸</b> ${message}`;
+		td.innerHTML = `<b class="${userclass}">${username}▸</b> ${DOMPurify.sanitize(message, DOMPurifyConfig)}`;
 		// hacky way to allow scripts
 		Array.prototype.slice.call(td.children).forEach((curr) => {
 			if (curr.nodeName === 'SCRIPT') {
