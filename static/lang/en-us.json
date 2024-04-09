@@ -23,7 +23,7 @@
 		"kGeneric_Update": "Update",
 		"kGeneric_Logout": "Log out",
 		
-		"kWelcomeModal_Header": "Welcome to CollabVM",
+		"kWelcomeModal_Header": "Welcome to UserVM",
 		"kWelcomeModal_Body": "<p>Welcome to UserVM! This page contains virtual machines run by members of the CollabVM community. Please keep the following in mind:</p> <ul> <li>These VMs are not run or moderated by Computernewb or the CollabVM staff, and we are not responsible for their content.</li> <li>With that in mind, CollabVM rules 1-5 still apply to these VMs. Please report any violations to the VM owner. Report violations by VM staff to the CollabVM staff.</li> <li>VMs may have their own rules that you are expected to follow. Please read the rules of the VM you are using.</li> </ul> <h3>NSFW Warning</h3> Please note that NSFW content may show up on some of these VMs. We try to add a blur and a warning to the VMs that might have NSFW content, but we can't guarantee that nothing will slip through.",
 
 		"kSiteButtons_Home": "Home",
